@@ -1,4 +1,6 @@
+application_rag_progress.md
 assets/model/*
 assets/datasets/*
+notebooks/
 guardrails.py
 requirements.txt
