@@ -1,0 +1,3 @@
+chmod +x scripts/check_server.sh
+bash scripts/check_server.sh        # checks port 8000
+bash scripts/check_server.sh 8001   # checks port 8001

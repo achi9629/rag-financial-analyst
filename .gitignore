@@ -1,0 +1,4 @@
+assets/model/*
+assets/datasets/*
+guardrails.py
+requirements.txt
