@@ -1,7 +1,7 @@
 #!/bin/bash
 export no_proxy="localhost,127.0.0.1"
 
-PORT=${1:-8000}
+PORT=${1:-8001}
 MODEL="assets/model/Qwen2.5-Coder-32B-Instruct"
 
 echo "Checking vLLM server on port $PORT..."

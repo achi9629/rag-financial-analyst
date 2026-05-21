@@ -51,8 +51,8 @@ def _get_client(config: dict,
                                 )
     return _clients[model_key], cfg
 
-def call_llm(condif: dict,
-            prompt: str, 
+def call_llm(config: str, 
+             prompt: str,
             model: str = "qwen", 
             system: str = None, 
             temperature: float = None, 
@@ -96,5 +96,10 @@ if __name__ == "__main__":
     # Quick test
     print("Testing Qwen...")
     # result = call_llm("Write a pandas one-liner to count null values per column")
-    result = call_llm(config, "You know about ramayan, what do you think about it? Also give me the MFU for this query")
+    result = call_llm(config, "You know about ramayan, what do you think about it?")
+    print(f"Response: {result}")
+    
+    print("Testing Llama...")
+    # result = call_llm("Write a pandas one-liner to count null values per column")
+    result = call_llm(config, "You know about ramayan, what do you think about it?", 'llama')
     print(f"Response: {result}")

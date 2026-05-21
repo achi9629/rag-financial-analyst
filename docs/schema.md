@@ -30,6 +30,16 @@ PaySim is a synthetic dataset simulating mobile money transactions based on a re
 | TRANSFER | 532,909 | 8.4% |
 | DEBIT | 41,432 | 0.7% |
 
+## Transaction Type Comparison
+
+| Type | What it is | Direction | Receiver | Fraud? |
+|---|---|---|---|---|
+| CASH_IN | Depositing physical cash into an account | Cash → Account | Customer (`C`) | Never |
+| CASH_OUT | Withdrawing cash from an account | Account → Cash | Merchant/agent (`M`) | Yes (4,116 cases) |
+| PAYMENT | Purchasing goods/services from a merchant | Customer → Merchant | Merchant (`M`) | Never |
+| DEBIT | Automated withdrawal (e.g., bill payment) | Account → System/merchant | System/merchant | Never |
+| TRANSFER | Person-to-person money transfer | Customer → Customer | Customer (`C`) | Yes (4,097 cases) |
+
 ## Fraud Statistics
 
 - **Total fraudulent transactions**: 8,213 (0.129% of all transactions)
