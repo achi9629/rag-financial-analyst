@@ -14,3 +14,12 @@ models:
 
 proxy:
   no_proxy: "localhost,127.0.0.1"
+
+ingestion:
+  docs_dir: "docs"
+  chroma_dir: "data/chromadb"
+  collection_name: "rag_financial_analyst"
+  chunk_size: 800
+  chunk_overlap: 120
+  embedding_model: "assets/model/all-MiniLM-L6-v2"
+  embedding_device: "cpu"

@@ -1,6 +1,8 @@
 application_rag_progress.md
 assets/model/*
 assets/datasets/*
+data/chromadb*
 notebooks/
 guardrails.py
 requirements.txt
+.vscode/
