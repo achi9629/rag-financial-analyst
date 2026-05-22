@@ -1,6 +1,9 @@
 import yaml
-from openai import OpenAI
+import logging
 from pathlib import Path
+from openai import OpenAI
+
+logger = logging.getLogger(__name__)
 
 _clients = {}
 
@@ -85,19 +88,22 @@ def call_llm(config: str,
                                             messages=messages,
                                             temperature=temperature if temperature is not None else cfg["temperature"],
                                             max_tokens=max_tokens or cfg["max_tokens"],
+                                            stop=["<|eot_id|>"],
                                         )
     return response.choices[0].message.content
 
 if __name__ == "__main__":
     
+    logging.basicConfig(level=logging.INFO)
+    
     config_path = Path(__file__).parent.parent / "configs" / "config.yaml"
     config = load_config(config_path)
     
     # Quick test
-    print("Testing Qwen...")
+    logging.info("Testing Qwen...")
     # result = call_llm("Write a pandas one-liner to count null values per column")
     result = call_llm(config, "You know about ramayan, what do you think about it?")
-    print(f"Response: {result}")
+    logging.info(f"Response: {result[0]}")
     
     print("Testing Llama...")
     # result = call_llm("Write a pandas one-liner to count null values per column")
