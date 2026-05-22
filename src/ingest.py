@@ -145,7 +145,7 @@ def create_vectorstore(chunks: list,
     try:
         client.delete_collection(collection_name)
         logger.info(f"Cleared existing collection '{collection_name}'")
-    except ValueError:
+    except (ValueError, chromadb.errors.NotFoundError):
         logger.info(f"No existing collection '{collection_name}' to clear")
     vectorstore = Chroma.from_documents(documents = chunks,
                                         embedding = embeddings,

@@ -16,7 +16,7 @@ proxy:
   no_proxy: "localhost,127.0.0.1"
 
 ingestion:
-  docs_dir: "docs"
+  docs_dir: "data/docs"
   chroma_dir: "data/chromadb"
   collection_name: "rag_financial_analyst"
   chunk_size: 800
