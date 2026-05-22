@@ -1,8 +1,9 @@
 import json
 import logging
 from pathlib import Path
-from models import load_config, call_llm
 from pydantic import BaseModel, field_validator
+
+from models import load_config, call_llm
 
 logger = logging.getLogger(__name__)
 
@@ -66,7 +67,7 @@ def route_query(config: dict, user_query: str) -> RouterOutput:
         - config: A dictionary containing configuration parameters for the LLM call.
         - user_query: A string representing the user's natural language query about transaction data.
     Returns:
-        - An instance of RouterOutput containing the complexity classification, execution steps, and retrieval queries.
+        - RouterOutput: A structured output containing the complexity classification, execution steps, and retrieval queries for the given user query.
     '''
     
     response = call_llm(config = config,
