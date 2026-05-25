@@ -7,3 +7,6 @@ notebooks/
 requirements.txt
 .vscode/
 mlruns/
+user_queries.txt
+mcp_server.py
+mlflow.db

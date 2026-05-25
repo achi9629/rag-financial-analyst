@@ -1,6 +1,7 @@
 import time
 import logging
 import pandas as pd
+import mlflow
 import gradio as gr
 from pathlib import Path
 
@@ -19,6 +20,13 @@ agent = AgentPipeline(pipe)
 df = pd.read_csv(DATA_PATH)
 logger.info(f"Dataset loaded: {len(df)} rows")
 
+# --- MLflow experiment setup (optional, logs to ./mlruns by default) ---
+MLFLOW_EXPERIMENT = "rag-financial-analyst"
+mlflow.set_tracking_uri("file:mlruns")
+try:
+    mlflow.set_experiment(MLFLOW_EXPERIMENT)
+except Exception:
+    pass
 # --- Session stats accumulator ---
 session_history = []
 
@@ -85,6 +93,30 @@ def _run_pipeline(user_query: str) -> tuple[str, str, str, str, str]:
         "Code Safe": stage != 4 or result.model_used != "blocked",
     })
     
+    # --- Log to MLflow (per-query run, non-blocking) ---
+    mlflow.set_tracking_uri("file:mlruns")
+    try:
+        with mlflow.start_run(run_name=f"pipeline-{int(time.time())}"):
+            mlflow.log_params({
+                "query": user_query[:250],
+                "mode": "pipeline",
+                "model": result.model_used,
+                "query_type": result.query_type,
+            })
+            mlflow.log_metrics({
+                "fallback_stage": stage,
+                "confidence": confidence,
+                "latency_route": result.latency_route,
+                "latency_retrieve": result.latency_retrieve,
+                "latency_generate": result.latency_generate,
+                "latency_validate": result.latency_validate,
+                "latency_total": result.total_latency,
+                "latency_exec": exec_latency,
+                "exec_success": int(exec_result.success),
+                "code_safe": int(stage != 4 or result.model_used != "blocked"),
+        })
+    except Exception:
+        logger.debug("MLflow logging skipped")
     return code, exec_output, explanation, metadata, ""
 
 
@@ -132,6 +164,26 @@ def _run_agent(user_query: str) -> tuple[str, str, str, str, str]:
         "Code Safe": result.final_action != "stop_blocked",
     })
     
+    # --- Log to MLflow (per-query run, non-blocking) ---
+    mlflow.set_tracking_uri("file:mlruns")
+    try:
+        with mlflow.start_run(run_name=f"agent-{int(time.time())}"):
+            mlflow.log_params({
+                "query": user_query[:250],
+                "mode": "agent",
+                "model": "qwen+llama",
+                "query_type": result.query_type,
+                "attempts": str(result.attempts),
+            })
+            mlflow.log_metrics({
+                "confidence": result.confidence,
+                "latency_total": result.total_latency,
+                "attempts": result.attempts,
+                "exec_success": int(result.final_action == "stop_success"),
+                "code_safe": int(result.final_action != "stop_blocked"),
+            })
+    except Exception:
+        logger.debug("MLflow logging skipped (server not available)")
     return result.code, exec_output, result.explanation, metadata, trace
 
 
@@ -200,36 +252,98 @@ def get_stats() -> tuple[pd.DataFrame, str]:
     return stats_df, summary
 
 
-# --- Gradio UI (single page, no tabs) ---
-with gr.Blocks(title="RAG Financial Analyst") as demo:
+
+# --- Custom CSS for richer styling ---
+CUSTOM_CSS = """
+.main-header {
+    text-align: center;
+    background: linear-gradient(135deg, #1a1a2e 0%, #16213e 50%, #0f3460 100%);
+    padding: 20px;
+    border-radius: 10px;
+    margin-bottom: 15px;
+}
+.main-header h1 {
+    color: #7c3aed;
+    margin: 0;
+    font-size: 2em;
+}
+.main-header p {
+    color: #a8a8b8;
+    margin: 5px 0 0 0;
+}
+.metadata-box {
+    background: #1a1a2e;
+    border-left: 3px solid #7c3aed;
+    padding: 10px;
+    border-radius: 5px;
+}
+"""
+
+# --- Gradio UI (themed, syntax-highlighted) ---
+THEME = gr.themes.Soft(
+    primary_hue="purple",
+    secondary_hue="blue",
+    neutral_hue="slate",
+    font=gr.themes.GoogleFont("Inter"),
+    font_mono=gr.themes.GoogleFont("JetBrains Mono"),
+)
+
+with gr.Blocks(
+    title="RAG Financial Analyst",
+) as demo:
     
-    gr.Markdown("# RAG Financial Analyst")
-    gr.Markdown("Ask natural language questions about 6.3M PaySim financial transactions.")
+    gr.HTML("""
+        <div class="main-header">
+            <h1>RAG Financial Analyst</h1>
+            <p>Natural language queries over 6.3M PaySim transactions · Powered by Qwen2.5-Coder-32B + Llama-3-70B via vLLM</p>
+        </div>
+    """)
     
     with gr.Row():
         mode = gr.Radio(
             ["Pipeline", "Agent"], value="Pipeline", label="Mode",
-            info="Pipeline = static cascade | Agent = self-correcting loop"
+            info="Pipeline = 4-stage static cascade | Agent = self-correcting loop with execution feedback"
         )
     
     with gr.Row():
         query_input = gr.Textbox(
-            label="Query", placeholder="e.g., Show all fraudulent transactions",
+            label="Query", 
+            placeholder="e.g., Identify mule accounts that receive transfers and immediately cash out",
             lines=2, scale=4
         )
-        submit_btn = gr.Button("Run", variant="primary", scale=1)
+        submit_btn = gr.Button("Run", variant="primary", scale=1, size="lg")
     
-    with gr.Row():
-        with gr.Column():
-            code_output = gr.Textbox(label="Generated Code", lines=12)
-            explanation_output = gr.Textbox(label="Explanation", lines=3)
-        with gr.Column():
-            exec_output = gr.Textbox(label="Execution Result", lines=12)
-            metadata_output = gr.Textbox(label="Metadata", lines=8)
+    gr.Examples(
+        examples=[
+            "Show all fraudulent transactions",
+            "Flag transactions above 10 lakh",
+            "Large cash-outs that zeroed sender balance",
+            "Identify mule accounts",
+            "Detect structuring - multiple transactions just below 10 lakh",
+        ],
+        inputs=query_input,
+        label="Example Queries",
+    )
+    
+    with gr.Row(equal_height=True):
+        with gr.Column(scale=1):
+            code_output = gr.Code(
+                label="Generated Code", 
+                language="python",
+                lines=14,
+                interactive=False,
+            )
+            explanation_output = gr.Textbox(label="Explanation", lines=3, interactive=False)
+        with gr.Column(scale=1):
+            exec_output = gr.Textbox(label="Execution Result", lines=14, interactive=False)
+            metadata_output = gr.Textbox(
+                label="Metadata", lines=8, interactive=False,
+                elem_classes=["metadata-box"]
+            )
     
     trace_output = gr.Textbox(
         label="Agent Trace (diagnosis → action at each step)",
-        lines=4, visible=False, interactive=False
+        lines=5, visible=False, interactive=False
     )
     
     # Toggle trace visibility when mode changes
@@ -253,4 +367,4 @@ with gr.Blocks(title="RAG Financial Analyst") as demo:
         refresh_btn.click(fn=get_stats, inputs=[], outputs=[stats_table, stats_summary])
 
 if __name__ == "__main__":
-    demo.launch(server_name="0.0.0.0", server_port=7860, share=False, show_error=True)
+    demo.launch(server_name="0.0.0.0", server_port=7860, share=False, show_error=True, theme=THEME, css=CUSTOM_CSS)

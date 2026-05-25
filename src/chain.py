@@ -1,6 +1,6 @@
 import logging
 from pathlib import Path
-from langchain_community.vectorstores import Chroma
+from langchain_chroma import Chroma
 
 from ingest import load_vectorstore
 from models import load_config, call_llm
