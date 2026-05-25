@@ -6,4 +6,4 @@ data/chromadb*
 notebooks/
 requirements.txt
 .vscode/
-wandb/
+mlruns/

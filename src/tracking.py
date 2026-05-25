@@ -1,5 +1,6 @@
 import time
-import wandb
+import json
+import mlflow
 import logging
 from typing import List, Dict, Optional
 
@@ -9,7 +10,7 @@ class QueryTracker:
     
     """
     Description:
-        W&B experiment tracker for the RAG pipeline.
+        MLflow experiment tracker for the RAG pipeline.
         Logs per-query metrics (latency, model, fallback stage, query type)
         and aggregate metrics (correctness rate, avg latency, fallback frequency).
     """
@@ -18,14 +19,15 @@ class QueryTracker:
                  run_name: str = None,
                  config: dict = None):
         
-        self.run = wandb.init(
-                            project=project,
-                            name=run_name,
-                            config=config or {},
-                            reinit=True
-                        )
+        mlflow.set_experiment(project)
+        self.run = mlflow.start_run(run_name=run_name)
+        if config:
+            # MLflow params must be strings; flatten top-level keys
+            flat_config = {k: str(v) for k, v in config.items()}
+            mlflow.log_params(flat_config)
         self._history = []  # type: List[Dict]
-        logger.info(f"W&B run initialized: {self.run.name} ({self.run.url})")
+        self._step = 0
+        logger.info(f"MLflow run initialized: {self.run.info.run_name} (run_id={self.run.info.run_id})")
         
     def track_query(self, 
                     user_query: str,
@@ -45,7 +47,7 @@ class QueryTracker:
         
         """
         Description:
-            Logs a single query's metrics to W&B and stores it in the local history.
+            Logs a single query's metrics to MLflow and stores it in the local history.
         Args:
             user_query (str): The original user query.
             query_type (str): Type of query (e.g., "financial_analysis", "data_retrieval").
@@ -67,11 +69,11 @@ class QueryTracker:
             "query_type": query_type,
             "fallback_stage": fallback_stage,
             "model_used": model_used,
-            "latency/route": latency_route,
-            "latency/retrieve": latency_retrieve,
-            "latency/generate": latency_generate,
-            "latency/validate": latency_validate,
-            "latency/total": total_latency,
+            "latency_route": latency_route,
+            "latency_retrieve": latency_retrieve,
+            "latency_generate": latency_generate,
+            "latency_validate": latency_validate,
+            "latency_total": total_latency,
             "confidence": confidence,
             "code_safe": int(code_safe),
             "context_length": context_length,
@@ -80,23 +82,27 @@ class QueryTracker:
         
         self._history.append(record)
         
-        # Log to W&B (step-level)
-        wandb.log({k: v for k, v in record.items() 
-                   if k not in ("query", "columns_used")})
+        # Log to MLflow (step-level)
+        mlflow.log_metrics(
+            {k: v for k, v in record.items() 
+             if k not in ("query", "query_type", "model_used", "columns_used")},
+            step=self._step
+        )
+        self._step += 1
         
-        logger.info(f"[W&B] Logged query: type={query_type} | stage={fallback_stage} | "
+        logger.info(f"[MLflow] Logged query: type={query_type} | stage={fallback_stage} | "
                      f"total={total_latency:.2f}s | model={model_used}")
         
     def log_summary(self) -> None:
         
         """
         Description:
-            Computes and logs aggregate metrics to W&B, such as average latency, 
+            Computes and logs aggregate metrics to MLflow, such as average latency, 
             fallback frequencies, correctness rates, and query type distributions.
         """
         
         if not self._history:
-            logger.warning("[W&B] No queries to summarize")
+            logger.warning("[MLflow] No queries to summarize")
             return
         
         n = len(self._history)
@@ -108,11 +114,11 @@ class QueryTracker:
             stage_counts[s] = stage_counts.get(s, 0) + 1
         
         # Avg latencies
-        avg_route = sum(r["latency/route"] for r in self._history) / n
-        avg_retrieve = sum(r["latency/retrieve"] for r in self._history) / n
-        avg_generate = sum(r["latency/generate"] for r in self._history) / n
-        avg_validate = sum(r["latency/validate"] for r in self._history) / n
-        avg_total = sum(r["latency/total"] for r in self._history) / n
+        avg_route = sum(r["latency_route"] for r in self._history) / n
+        avg_retrieve = sum(r["latency_retrieve"] for r in self._history) / n
+        avg_generate = sum(r["latency_generate"] for r in self._history) / n
+        avg_validate = sum(r["latency_validate"] for r in self._history) / n
+        avg_total = sum(r["latency_total"] for r in self._history) / n
         
         # Code safety rate
         safe_rate = sum(r["code_safe"] for r in self._history) / n
@@ -124,21 +130,21 @@ class QueryTracker:
         avg_confidence = sum(r["confidence"] for r in self._history) / n
         
         summary = {
-            "summary/total_queries": n,
-            "summary/first_pass_rate": first_pass_rate,
-            "summary/code_safe_rate": safe_rate,
-            "summary/avg_confidence": avg_confidence,
-            "summary/avg_latency_route": avg_route,
-            "summary/avg_latency_retrieve": avg_retrieve,
-            "summary/avg_latency_generate": avg_generate,
-            "summary/avg_latency_validate": avg_validate,
-            "summary/avg_latency_total": avg_total,
+            "summary_total_queries": n,
+            "summary_first_pass_rate": first_pass_rate,
+            "summary_code_safe_rate": safe_rate,
+            "summary_avg_confidence": avg_confidence,
+            "summary_avg_latency_route": avg_route,
+            "summary_avg_latency_retrieve": avg_retrieve,
+            "summary_avg_latency_generate": avg_generate,
+            "summary_avg_latency_validate": avg_validate,
+            "summary_avg_latency_total": avg_total,
         }
         
         # Fallback distribution
         for stage in range(1, 5):
-            summary[f"summary/fallback_stage_{stage}_count"] = stage_counts.get(stage, 0)
-            summary[f"summary/fallback_stage_{stage}_pct"] = stage_counts.get(stage, 0) / n
+            summary[f"summary_fallback_stage_{stage}_count"] = stage_counts.get(stage, 0)
+            summary[f"summary_fallback_stage_{stage}_pct"] = stage_counts.get(stage, 0) / n
         
         # Query type distribution
         type_counts = {}
@@ -146,30 +152,25 @@ class QueryTracker:
             t = r["query_type"]
             type_counts[t] = type_counts.get(t, 0) + 1
         for qtype, count in type_counts.items():
-            summary[f"summary/query_type_{qtype}_count"] = count
+            summary[f"summary_query_type_{qtype}_count"] = count
         
-        # Log W&B table with all queries
-        table = wandb.Table(
-            columns=["query", "query_type", "fallback_stage", "model_used",
-                      "latency_total", "confidence", "code_safe"],
-            data=[[r["query"], r["query_type"], r["fallback_stage"], 
-                   r["model_used"], round(r["latency/total"], 2), 
-                   r["confidence"], r["code_safe"]] 
-                  for r in self._history]
+        mlflow.log_metrics(summary)
+        
+        # Log query history as JSON artifact
+        mlflow.log_text(
+            json.dumps(self._history, indent=2),
+            "query_history.json"
         )
-        summary["summary/query_table"] = table
         
-        wandb.log(summary)
-        
-        logger.info(f"[W&B] Summary: {n} queries | first_pass={first_pass_rate:.0%} | "
+        logger.info(f"[MLflow] Summary: {n} queries | first_pass={first_pass_rate:.0%} | "
                      f"avg_latency={avg_total:.2f}s | safe_rate={safe_rate:.0%}")
         
     def finish(self):
         
         """Description:
-            Finalizes the W&B run and logs the final summary.
+            Finalizes the MLflow run and logs the final summary.
         """
         
         self.log_summary()
-        self.run.finish()
-        logger.info("[W&B] Run finished")
+        mlflow.end_run()
+        logger.info("[MLflow] Run finished")

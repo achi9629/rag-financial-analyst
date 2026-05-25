@@ -1,0 +1,4 @@
+pkill -f "python app.py"
+1. Build a network graph of all sender-receiver pairs, find connected components, and export the clusters
+2. Train a fraud classifier using transaction features and output the model coefficients
+3. Show fraud stats and save results with df.to_csv('/tmp/output.csv')

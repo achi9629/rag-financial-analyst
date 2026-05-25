@@ -111,7 +111,7 @@ class Pipeline:
     
     def _track(self, user_query, plan, fallback_stage, model_used, 
             code_output, t_route, t_retrieve, t_generate, t_validate, t_start, context):
-        """Log query metrics to W&B if tracking is enabled."""
+        """Log query metrics to MLflow if tracking is enabled."""
         if self.tracker:
             self.tracker.track_query(
                 user_query = user_query,
